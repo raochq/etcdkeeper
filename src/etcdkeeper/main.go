@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"embed"
 	"encoding/json"
 	"etcdkeeper/session"
 	_ "etcdkeeper/session/providers/memory"
@@ -12,10 +13,10 @@ import (
 	"go.etcd.io/etcd/client/v2"
 	"go.etcd.io/etcd/client/v3"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,6 +41,9 @@ var (
 	sessmgr *session.Manager
 	mu      sync.Mutex
 )
+
+//go:embed assets
+var assetsFS embed.FS
 
 type userInfo struct {
 	host   string
@@ -81,13 +85,8 @@ func main() {
 	// dirctory mode
 	http.HandleFunc("/v3/getpath", middleware(nothing, getPath))
 
-	wd, err := os.Executable()
-	if err != nil {
-		log.Fatal(err)
-	}
-	rootPath := filepath.Dir(wd)
-
 	// Session management
+	var err error
 	sessmgr, err = session.NewManager("memory", "_etcdkeeper_session", 86400)
 	if err != nil {
 		log.Fatal(err)
@@ -97,7 +96,8 @@ func main() {
 	})
 	//log.Println(http.Dir(rootPath + "/assets"))
 
-	http.Handle("/", http.FileServer(http.Dir(rootPath+"/assets"))) // view static directory
+	rootFS, _ := fs.Sub(assetsFS, "assets")
+	http.Handle("/", http.FileServer(http.FS(rootFS))) // view static directory
 
 	log.Printf("listening on %s:%d\n", *host, *port)
 	err = http.ListenAndServe(*host+":"+strconv.Itoa(*port), nil)
